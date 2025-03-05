@@ -158,28 +158,28 @@ export default function Auth() {
     setLoading(false);
   };
 
-  const handleGoogleSignIn = async () => {
-    try {
-      // IMPORTANT: We're setting a custom redirectUrl that includes our custom parameters
-      // This will make the OAuth flow directly return to our custom URL
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          // Change this to include our custom parameters directly
-          redirectTo: `${window.location.origin}/auth/callback?next=/auth%3Fprompt%3Dusername%26provider%3Dgoogle`,
-        },
-      });
+  // const handleGoogleSignIn = async () => {
+  //   try {
+  //     // IMPORTANT: We're setting a custom redirectUrl that includes our custom parameters
+  //     // This will make the OAuth flow directly return to our custom URL
+  //     const { error } = await supabase.auth.signInWithOAuth({
+  //       provider: 'google',
+  //       options: {
+  //         // Change this to include our custom parameters directly
+  //         redirectTo: `${window.location.origin}/auth/callback?next=/auth%3Fprompt%3Dusername%26provider%3Dgoogle`,
+  //       },
+  //     });
 
-      if (error) {
-        console.error('OAuth error:', error);
-        setError(error.message);
-        toast.error(error.message);
-      }
-    } catch (err) {
-      console.error('Unexpected error in OAuth flow:', err);
-      setError('An unexpected error occurred. Please try again.');
-    }
-  };
+  //     if (error) {
+  //       console.error('OAuth error:', error);
+  //       setError(error.message);
+  //       toast.error(error.message);
+  //     }
+  //   } catch (err) {
+  //     console.error('Unexpected error in OAuth flow:', err);
+  //     setError('An unexpected error occurred. Please try again.');
+  //   }
+  // };
   const handleUsernameSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -424,7 +424,7 @@ export default function Auth() {
           <span className="px-2 bg-white text-gray-500">Or continue with</span>
         </div>
       </div>
-
+      {/* 
       <button
         onClick={handleGoogleSignIn}
         className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-50 transition duration-200 shadow-sm"
@@ -453,7 +453,7 @@ export default function Auth() {
           />
         </svg>
         Google
-      </button>
+      </button> */}
 
       <p className="mt-8 text-center text-gray-600">
         {formType === 'signin' ? (
