@@ -342,7 +342,7 @@ export default function Auth() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-200 font-medium shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full bg-[#01182F] text-white py-3 px-4 rounded-lg hover:opacity-70 transition duration-200 font-medium shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {loading ? 'Creating your profile...' : 'Complete Sign Up'}
           </button>
@@ -354,7 +354,7 @@ export default function Auth() {
   return (
     <div className="max-w-md mx-auto mt-10 p-8 bg-white rounded-xl shadow-lg min-h-[80vh] flex flex-col justify-center">
       <h2 className="text-3xl font-bold mb-8 text-center text-gray-800">
-        {formType === 'signin' ? 'Welcome Back' : 'Create Account'}
+        {formType === 'signin' ? 'We are Buskers' : 'Create Account'}
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -406,7 +406,7 @@ export default function Auth() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-200 font-medium shadow-sm disabled:opacity-70 disabled:cursor-not-allowed mt-6"
+          className="w-full bg-[#01182F] text-white py-3 px-4 rounded-lg hover:opacity-70 transition duration-200 font-medium shadow-sm disabled:opacity-70 disabled:cursor-not-allowed mt-6"
         >
           {loading
             ? 'Processing...'
@@ -461,7 +461,7 @@ export default function Auth() {
             Don&apos;t have an account?{' '}
             <button
               onClick={() => setFormType('signup')}
-              className="text-blue-600 hover:underline font-medium"
+              className="text-[#01182F] hover:underline  font-semibold"
             >
               Sign Up
             </button>
