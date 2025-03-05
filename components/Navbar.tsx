@@ -53,7 +53,9 @@ const Navbar = () => {
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-[#01182F] font-bold">
-                {user?.user_metadata?.username[0].toUpperCase() || 'U'}
+                {user?.user_metadata?.username?.[0]?.toUpperCase() ||
+                  user?.email?.[0]?.toUpperCase() ||
+                  'U'}
               </div>
             </button>
 

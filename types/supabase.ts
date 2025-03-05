@@ -28,3 +28,17 @@ interface GalleryItem {
   url: string;
   type: 'image' | 'video';
 }
+
+export type BuskingLocation = {
+  id: string;
+  lat: number;
+  lng: number;
+  startTime: string;
+  endTime: string;
+  date: string;
+  buskerId: string;
+  user_name: string;
+  main_photo: string;
+  genre: string;
+  description: string;
+};

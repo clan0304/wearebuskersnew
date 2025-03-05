@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-'use client';
-
 import React, { useState, useRef } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
@@ -48,6 +45,13 @@ const formSchema = z.object({
 
 type FormSchemaType = z.infer<typeof formSchema>;
 
+// Type definitions for form
+declare global {
+  interface Window {
+    initAutocomplete?: () => void;
+  }
+}
+
 const BuskerModalForm: React.FC<BuskerModalFormProps> = ({
   initialData,
   isEditMode,
@@ -61,6 +65,7 @@ const BuskerModalForm: React.FC<BuskerModalFormProps> = ({
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<FormSchemaType>({
     resolver: zodResolver(formSchema),
@@ -80,8 +85,15 @@ const BuskerModalForm: React.FC<BuskerModalFormProps> = ({
     initialData?.main_photo || ''
   );
   const [isUploading, setIsUploading] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const locationValue = watch('location');
+
+  // Handle location change
+  const handleLocationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setValue('location', e.target.value);
+  };
 
   const handleFileChange = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -179,12 +191,20 @@ const BuskerModalForm: React.FC<BuskerModalFormProps> = ({
   };
 
   return (
-    <div onClick={(e) => e.stopPropagation()} className="relative">
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
+      className="relative"
+    >
       <form
         ref={formRef}
         onSubmit={handleSubmit(onSubmit)}
         className="space-y-4"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
       >
         <div className="mb-4">
           <label className="block text-gray-700 text-sm font-bold mb-2">
@@ -214,11 +234,22 @@ const BuskerModalForm: React.FC<BuskerModalFormProps> = ({
           <label className="block text-gray-700 text-sm font-bold mb-2">
             Location:
           </label>
-          <input
+          <select
             {...register('location')}
             className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            placeholder="Enter your location (e.g., 'New York, NY')"
-          />
+            onChange={handleLocationChange}
+            value={locationValue}
+          >
+            <option value="">Select a state or territory</option>
+            <option value="NSW">New South Wales (NSW)</option>
+            <option value="NT">Northern Territory (NT)</option>
+            <option value="QLD">Queensland (QLD)</option>
+            <option value="SA">South Australia (SA)</option>
+            <option value="TAS">Tasmania (TAS)</option>
+            <option value="VIC">Victoria (VIC)</option>
+            <option value="WA">Western Australia (WA)</option>
+            <option value="ACT">Australian Capital Territory (ACT)</option>
+          </select>
           {errors.location && (
             <p className="text-red-500 text-xs italic">
               {errors.location.message}

@@ -28,7 +28,7 @@ export const GalleryUploader = ({
     <div className="flex justify-end pr-10">
       {user?.id === userId && (
         <button
-          className="bg-primary hover:opacity-70 rounded-full px-7 py-2 font-semibold text-white"
+          className="bg-[#01182F] hover:opacity-70 rounded-full px-7 py-2 font-semibold text-white"
           onClick={() => setIsModalOpen(true)}
         >
           Manage Gallery

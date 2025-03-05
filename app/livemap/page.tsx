@@ -1,12 +1,20 @@
 'use client';
 
 import { GoogleMap, LoadScript, Marker } from '@react-google-maps/api';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import toast from 'react-hot-toast';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+
+// Import our components
+import ScheduleForm from './ScheduleForm';
+import BuskerInfoCard from './BuskerInfoCard';
+import LocationSelector from './LocationSelector';
+
+// Import types and utils
+import { BuskingLocation } from '@/types/supabase';
+import { getCurrentMelbourneTime } from '@/utils/dateUtils';
 
 const mapContainerStyle = {
   width: '100vw',
@@ -16,20 +24,6 @@ const mapContainerStyle = {
 const center = {
   lat: -37.8136,
   lng: 144.9631,
-};
-
-type BuskingLocation = {
-  id: string;
-  lat: number;
-  lng: number;
-  startTime: string;
-  endTime: string;
-  date: string;
-  buskerId: string;
-  user_name: string;
-  main_photo: string;
-  genre: string;
-  description: string;
 };
 
 export default function MapPage() {
@@ -48,6 +42,10 @@ export default function MapPage() {
   const [selectedMarker, setSelectedMarker] = useState<BuskingLocation | null>(
     null
   );
+  const [isEditing, setIsEditing] = useState(false);
+  const [editStartTime, setEditStartTime] = useState<string>('');
+  const [editEndTime, setEditEndTime] = useState<string>('');
+  const [isOwner, setIsOwner] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -99,6 +97,56 @@ export default function MapPage() {
     };
   }, []);
 
+  // Function to check if a busking session has expired
+  const isExpired = (date: string, endTime: string): boolean => {
+    const currentTime = getCurrentMelbourneTime();
+    const currentDate = currentTime.toISOString().split('T')[0];
+
+    // If the date is before today, it's expired
+    if (date < currentDate) {
+      return true;
+    }
+
+    // If it's today, check if the end time has passed
+    if (date === currentDate) {
+      const [endHours, endMinutes] = endTime.split(':').map(Number);
+      const endTimeDate = new Date(currentTime);
+      endTimeDate.setHours(endHours, endMinutes, 0, 0);
+
+      return currentTime > endTimeDate;
+    }
+
+    return false;
+  };
+
+  // Function to delete expired busking locations
+  const deleteExpiredLocations = async (
+    expiredLocations: BuskingLocation[]
+  ) => {
+    if (expiredLocations.length === 0) return;
+
+    try {
+      // Get IDs of expired locations
+      const expiredIds = expiredLocations.map((location) => location.id);
+
+      // Delete expired locations from Supabase
+      const { error } = await supabase
+        .from('busking_locations')
+        .delete()
+        .in('id', expiredIds);
+
+      if (error) {
+        console.error('Error deleting expired busking locations:', error);
+      } else {
+        console.log(
+          `Successfully deleted ${expiredIds.length} expired busking locations`
+        );
+      }
+    } catch (error) {
+      console.error('Unexpected error deleting expired locations:', error);
+    }
+  };
+
   useEffect(() => {
     // Fetch busking locations from Supabase
     const fetchBuskingLocations = async () => {
@@ -137,14 +185,97 @@ export default function MapPage() {
         description: item.description || '',
       }));
 
-      setMarkers(formattedData);
+      // Filter out expired busking locations
+      const currentLocations: BuskingLocation[] = [];
+      const expiredLocations: BuskingLocation[] = [];
+
+      formattedData.forEach((location) => {
+        if (isExpired(location.date, location.endTime)) {
+          expiredLocations.push(location);
+        } else {
+          currentLocations.push(location);
+        }
+      });
+
+      // Update markers with only current locations
+      setMarkers(currentLocations);
+
+      // Delete expired locations from the database
+      if (expiredLocations.length > 0) {
+        deleteExpiredLocations(expiredLocations);
+      }
     };
 
     if (!loading) {
       fetchBuskingLocations();
-    }
-  }, [loading]);
 
+      // Set up interval to periodically check for expired locations
+      const intervalId = setInterval(() => {
+        const updatedMarkers = markers.filter(
+          (marker) => !isExpired(marker.date, marker.endTime)
+        );
+
+        // If any markers were filtered out, they're newly expired
+        if (updatedMarkers.length < markers.length) {
+          const newlyExpired = markers.filter((marker) =>
+            isExpired(marker.date, marker.endTime)
+          );
+          deleteExpiredLocations(newlyExpired);
+          setMarkers(updatedMarkers);
+
+          // If the selected marker has expired, deselect it
+          if (
+            selectedMarker &&
+            isExpired(selectedMarker.date, selectedMarker.endTime)
+          ) {
+            setSelectedMarker(null);
+          }
+        }
+      }, 60000); // Check every minute
+
+      return () => clearInterval(intervalId);
+    }
+  }, [loading, markers, selectedMarker]);
+
+  // Memoize the checkOwnership function with useCallback
+  const checkOwnership = useCallback(async () => {
+    if (!user || !selectedMarker) {
+      setIsOwner(false);
+      return;
+    }
+
+    try {
+      // Get user's busker profile
+      const { data, error } = await supabase
+        .from('buskers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        setIsOwner(false);
+        return;
+      }
+
+      setIsOwner(data.id === selectedMarker.buskerId);
+    } catch (error) {
+      console.error('Error checking ownership:', error);
+      setIsOwner(false);
+    }
+  }, [user, selectedMarker]); // Include dependencies for the checkOwnership function
+
+  // Then in your useEffect hook
+  useEffect(() => {
+    // Initialize edit form values when a marker is selected
+    if (selectedMarker) {
+      setEditStartTime(selectedMarker.startTime);
+      setEditEndTime(selectedMarker.endTime);
+      checkOwnership();
+    } else {
+      setIsEditing(false);
+      setIsOwner(false);
+    }
+  }, [selectedMarker, checkOwnership]); // Now checkOwnership is properly included
   const handleAddScheduleClick = () => {
     if (!isBusker) {
       toast.custom(
@@ -163,7 +294,7 @@ export default function MapPage() {
             </div>
             <button
               onClick={() => {
-                router.push('/busker');
+                router.push('/buskers');
                 toast.dismiss(t.id);
               }}
               className="bg-green-500 text-white font-semibold px-4 py-2 rounded hover:bg-green-600"
@@ -203,9 +334,43 @@ export default function MapPage() {
       return;
     }
 
-    const melbourneDate = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Australia/Melbourne' })
-    );
+    // Validate time restrictions
+    const currentTime: Date = getCurrentMelbourneTime();
+    const oneHourAfter: Date = new Date(currentTime);
+    oneHourAfter.setHours(currentTime.getHours() + 1);
+
+    const selectedStartTime: Date = new Date(currentTime);
+    const [startHours, startMinutes]: number[] = startTime
+      .split(':')
+      .map(Number);
+    selectedStartTime.setHours(startHours, startMinutes, 0, 0);
+
+    // Validate start time is within the allowed range
+    if (selectedStartTime < currentTime || selectedStartTime > oneHourAfter) {
+      toast.error('Start time must be between now and 1 hour from now');
+      return;
+    }
+
+    const selectedEndTime: Date = new Date(currentTime);
+    const [endHours, endMinutes]: number[] = endTime.split(':').map(Number);
+    selectedEndTime.setHours(endHours, endMinutes, 0, 0);
+
+    // Check if the selected end time is before start time (might be next day)
+    if (selectedEndTime < selectedStartTime) {
+      selectedEndTime.setDate(selectedEndTime.getDate() + 1); // Move to next day
+    }
+
+    // Calculate time differences
+    const hoursBetween: number =
+      (selectedEndTime.getTime() - selectedStartTime.getTime()) /
+      (1000 * 60 * 60);
+
+    if (hoursBetween > 3) {
+      toast.error('End time cannot be more than 3 hours after start time.');
+      return;
+    }
+
+    const melbourneDate = getCurrentMelbourneTime();
     const today =
       melbourneDate.getFullYear() +
       '-' +
@@ -293,6 +458,182 @@ export default function MapPage() {
     }
   };
 
+  const handleEdit = async () => {
+    if (!selectedMarker || !user) return;
+
+    if (!editStartTime || !editEndTime) {
+      toast.error('Please set both start and end times.');
+      return;
+    }
+
+    // Get current time in Melbourne
+    const currentTime: Date = getCurrentMelbourneTime();
+
+    // Convert start time to Date object
+    const startTimeDate: Date = new Date(currentTime);
+    const [startHours, startMinutes]: number[] = editStartTime
+      .split(':')
+      .map(Number);
+    startTimeDate.setHours(startHours, startMinutes, 0, 0);
+
+    // Convert end time to Date object
+    const endTimeDate: Date = new Date(currentTime);
+    const [endHours, endMinutes]: number[] = editEndTime.split(':').map(Number);
+    endTimeDate.setHours(endHours, endMinutes, 0, 0);
+
+    // If end time is earlier in the day than start time, assume it's the next day
+    if (endTimeDate < startTimeDate) {
+      endTimeDate.setDate(endTimeDate.getDate() + 1);
+    }
+
+    // Calculate the difference in hours
+    const hoursBetween: number =
+      (endTimeDate.getTime() - startTimeDate.getTime()) / (1000 * 60 * 60);
+
+    if (hoursBetween > 3) {
+      toast.error('End time cannot be more than 3 hours after start time');
+      return;
+    }
+
+    if (endTimeDate <= startTimeDate) {
+      toast.error('End time must be after start time');
+      return;
+    }
+
+    try {
+      // First check if the user is the owner of this busking location
+      const { data: buskerData, error: buskerError } = await supabase
+        .from('buskers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (buskerError) {
+        toast.error('Could not verify your busker profile.');
+        return;
+      }
+
+      if (buskerData.id !== selectedMarker.buskerId) {
+        toast.error('You can only edit your own busking schedules.');
+        return;
+      }
+
+      // Update busking location
+      await toast.promise(
+        (async () => {
+          const { error } = await supabase
+            .from('busking_locations')
+            .update({
+              startTime: editStartTime,
+              endTime: editEndTime,
+            })
+            .eq('id', selectedMarker.id);
+
+          if (error) {
+            console.error('Update error:', error);
+            throw new Error(error.message || 'Failed to update schedule.');
+          }
+
+          // Update local state
+          const updatedMarkers = markers.map((marker) => {
+            if (marker.id === selectedMarker.id) {
+              return {
+                ...marker,
+                startTime: editStartTime,
+                endTime: editEndTime,
+              };
+            }
+            return marker;
+          });
+
+          setMarkers(updatedMarkers);
+
+          // Update the selected marker
+          if (selectedMarker) {
+            setSelectedMarker({
+              ...selectedMarker,
+              startTime: editStartTime,
+              endTime: editEndTime,
+            });
+          }
+
+          return true;
+        })(),
+        {
+          loading: 'Updating your busking schedule...',
+          success: 'Schedule updated successfully!',
+          error: (err) => `${err.message}`,
+        }
+      );
+
+      // Exit edit mode after successful update
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Unexpected error:', error);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedMarker || !user) return;
+
+    try {
+      // First check if the user is the owner of this busking location
+      const { data: buskerData, error: buskerError } = await supabase
+        .from('buskers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (buskerError) {
+        toast.error('Could not verify your busker profile.');
+        return;
+      }
+
+      if (buskerData.id !== selectedMarker.buskerId) {
+        toast.error('You can only delete your own busking schedules.');
+        return;
+      }
+
+      // Confirm deletion
+      if (!window.confirm('Are you sure you want to delete this schedule?')) {
+        return;
+      }
+
+      // Delete busking location
+      await toast.promise(
+        (async () => {
+          const { error } = await supabase
+            .from('busking_locations')
+            .delete()
+            .eq('id', selectedMarker.id);
+
+          if (error) {
+            console.error('Delete error:', error);
+            throw new Error(error.message || 'Failed to delete schedule.');
+          }
+
+          // Update local state
+          const updatedMarkers = markers.filter(
+            (marker) => marker.id !== selectedMarker.id
+          );
+          setMarkers(updatedMarkers);
+
+          // Clear selected marker
+          setSelectedMarker(null);
+
+          return true;
+        })(),
+        {
+          loading: 'Deleting your busking schedule...',
+          success: 'Schedule deleted successfully!',
+          error: (err) => `${err.message}`,
+        }
+      );
+    } catch (error) {
+      console.error('Unexpected error:', error);
+    }
+  };
+
   if (loading)
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -313,7 +654,6 @@ export default function MapPage() {
               fill="currentFill"
             />
           </svg>
-          <span className="sr-only">Loading...</span>
         </div>
       </div>
     );
@@ -348,297 +688,36 @@ export default function MapPage() {
             />
           ))}
         </GoogleMap>
+
         {isSelectingLocation && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '80px',
-              left: '20px',
-              background: '#01182F',
-              color: 'white',
-              padding: '10px 20px',
-              borderRadius: '4px',
-              zIndex: 900,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              width: '220px',
-              height: '60px',
-            }}
-          >
-            <span className="font-semibold">Select the Location</span>
-            <button
-              onClick={() => setIsSelectingLocation(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'white',
-                fontSize: '16px',
-                fontWeight: 'semi-bold',
-                cursor: 'pointer',
-                marginLeft: '10px',
-              }}
-            >
-              ✕
-            </button>
-          </div>
+          <LocationSelector onClose={() => setIsSelectingLocation(false)} />
         )}
+
         {showForm && newMarker && (
-          <div
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-              zIndex: 1000,
-              width: '300px',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '20px',
-              }}
-            >
-              <h3 style={{ margin: 0 }}>Today&apos;s Performing Schedule</h3>
-              <button
-                onClick={() => setShowForm(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                }}
-              >
-                <label style={{ minWidth: '90px' }}>Start Time: </label>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                  }}
-                >
-                  <span style={{ flexGrow: 1 }}>{startTime || ''}</span>
-                  <div
-                    style={{ position: 'relative', display: 'inline-block' }}
-                  >
-                    <input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      style={{
-                        position: 'absolute',
-                        opacity: 0,
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        cursor: 'default',
-                      }}
-                    />
-                    <span
-                      style={{
-                        fontSize: '24px',
-                        cursor: 'pointer',
-                        display: 'inline-block',
-                        padding: '5px',
-                      }}
-                    >
-                      ⏰
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                }}
-              >
-                <label style={{ minWidth: '90px' }}>Finish Time: </label>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                  }}
-                >
-                  <span style={{ flexGrow: 1 }}>{endTime || ''}</span>
-                  <div
-                    style={{ position: 'relative', display: 'inline-block' }}
-                  >
-                    <input
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      style={{
-                        position: 'absolute',
-                        opacity: 0,
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        cursor: 'default',
-                      }}
-                    />
-                    <span
-                      style={{
-                        fontSize: '24px',
-                        cursor: 'pointer',
-                        display: 'inline-block',
-                        padding: '5px',
-                      }}
-                    >
-                      ⏰
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleSubmit}
-                style={{
-                  marginTop: '10px',
-                  padding: '10px',
-                  background: '#01182F',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                }}
-              >
-                Save
-              </button>
-            </div>
-          </div>
+          <ScheduleForm
+            startTime={startTime}
+            setStartTime={setStartTime}
+            endTime={endTime}
+            setEndTime={setEndTime}
+            handleSubmit={handleSubmit}
+            onClose={() => setShowForm(false)}
+          />
         )}
+
         {selectedMarker && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '80px',
-              right: '20px',
-              background: 'white',
-              padding: '20px',
-              borderRadius: '8px',
-              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-              zIndex: 900,
-              width: '300px',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '15px',
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-                Busker Info
-              </h3>
-              <button
-                onClick={() => setSelectedMarker(null)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  padding: '0',
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}
-            >
-              {selectedMarker.main_photo ? (
-                <div
-                  style={{
-                    width: '100%',
-                    height: '200px',
-                    borderRadius: '8px',
-                    overflow: 'hidden',
-                    position: 'relative',
-                  }}
-                >
-                  <Image
-                    src={selectedMarker.main_photo}
-                    alt={selectedMarker.user_name || 'Busker'}
-                    fill
-                    style={{
-                      objectFit: 'cover',
-                    }}
-                  />
-                </div>
-              ) : (
-                <div
-                  style={{
-                    width: '100%',
-                    height: '200px',
-                    borderRadius: '8px',
-                    backgroundColor: '#f0f0f0',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}
-                >
-                  <span>No Photo Available</span>
-                </div>
-              )}
-
-              <div>
-                <h4 style={{ margin: '0 0 5px 0', fontWeight: 'bold' }}>
-                  {selectedMarker.user_name || 'Unknown Busker'}
-                </h4>
-                <p style={{ margin: '0 0 10px 0', color: '#666' }}>
-                  <strong>Genre:</strong>{' '}
-                  {selectedMarker.genre || 'Not specified'}
-                </p>
-                <p style={{ margin: '0 0 10px 0' }}>
-                  <strong>Performance:</strong> {selectedMarker.date},{' '}
-                  {selectedMarker.startTime} - {selectedMarker.endTime}
-                </p>
-                <div>
-                  <p style={{ margin: '0 0 5px 0', fontWeight: 'bold' }}>
-                    About:
-                  </p>
-                  <p style={{ margin: '0', lineHeight: '1.5' }}>
-                    {selectedMarker.description || 'No description available.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <BuskerInfoCard
+            marker={selectedMarker}
+            isOwner={isOwner}
+            isEditing={isEditing}
+            setIsEditing={setIsEditing}
+            editStartTime={editStartTime}
+            setEditStartTime={setEditStartTime}
+            editEndTime={editEndTime}
+            setEditEndTime={setEditEndTime}
+            handleEdit={handleEdit}
+            handleDelete={handleDelete}
+            onClose={() => setSelectedMarker(null)}
+          />
         )}
       </LoadScript>
     </div>

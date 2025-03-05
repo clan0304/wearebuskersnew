@@ -75,8 +75,8 @@ const BuskerProfileDetailView = ({ busker }: { busker: Busker }) => {
         <Image
           src={busker.main_photo}
           alt="mainPhoto"
-          width={100}
-          height={100}
+          width={70}
+          height={70}
           className="rounded-full"
         />
 

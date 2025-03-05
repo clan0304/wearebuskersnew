@@ -28,7 +28,7 @@ const Induction = () => {
     <section className="w-full bg-gradient-to-b from-white to-gray-50">
       <div className="w-full max-w-6xl mx-auto px-4 md:px-12 py-16 md:py-24 flex flex-col gap-5">
         <div>
-          <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-center mb-4 md:mb-6 tracking-tight">
+          <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-center mb-8 md:mb-6 tracking-tight">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-indigo-600">
               What we do
             </span>{' '}

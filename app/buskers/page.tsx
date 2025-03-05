@@ -258,7 +258,7 @@ const BuskersPage = () => {
             </Button>
           ) : (
             <Button
-              onClick={() => router.push('/sign-in')}
+              onClick={() => router.push('/auth')}
               className="w-full sm:w-auto bg-white text-gray-800 border border-gray-300 hover:bg-gray-50"
               style={{ height: '42px', fontSize: '14px' }}
             >
